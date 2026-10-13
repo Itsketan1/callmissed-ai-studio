@@ -1,0 +1,453 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CallMissed AI Studio</title>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 32px 16px;
+            font-family: Arial, sans-serif;
+            background: #10121a;
+            color: #f5f5f7;
+        }
+
+        main { max-width: 850px; margin: auto; }
+
+        header, section {
+            padding: 24px;
+            margin-bottom: 20px;
+            background: #1b1e2b;
+            border: 1px solid #292d40;
+            border-radius: 14px;
+        }
+
+        h1 { color: #aaa5ff; margin-top: 0; }
+        h2 { margin-top: 0; }
+
+        .status { color: #a7e8bb; }
+
+        #messages {
+            min-height: 160px;
+            max-height: 420px;
+            overflow-y: auto;
+            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            padding: 13px 16px;
+            border-radius: 10px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .user { background: #35345c; align-self: flex-end; }
+        .assistant { background: #282c3c; align-self: stretch; }
+        .error { color: #ffb3b3; }
+
+        textarea {
+            width: 100%;
+            min-height: 90px;
+            resize: vertical;
+            padding: 14px;
+            border: 1px solid #45495c;
+            border-radius: 10px;
+            background: #11131d;
+            color: white;
+            font: inherit;
+        }
+
+        button {
+            margin-top: 12px;
+            padding: 12px 20px;
+            border: 0;
+            border-radius: 8px;
+            background: #8279ff;
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        button:disabled { opacity: .55; cursor: wait; }
+        .features { display: flex; flex-wrap: wrap; gap: 10px; }
+        .feature {
+            padding: 12px 15px;
+            border: 1px solid #45495c;
+            border-radius: 8px;
+        }
+        .hint { color: #b9bdcc; font-size: 13px; }
+    </style>
+</head>
+<body>
+<main>
+    <header>
+        <h1>CallMissed AI Studio</h1>
+        <p>One workspace for conversational, visual, and voice AI.</p>
+        <p class="status">Application running</p>
+    </header>
+
+    <section>
+        <h2>AI Chat</h2>
+        <p>Model: Sarvam 105B</p>
+
+        <div id="messages" aria-live="polite">
+            <div class="message assistant">
+                Hello! I'm ready. What would you like to explore?
+            </div>
+        </div>
+
+        <form id="chat-form">
+            <label for="message">Your message</label>
+            <textarea id="message" maxlength="4000"
+                placeholder="Ask me anything..." required></textarea>
+            <p class="hint">Keep messages concise to control API usage.</p>
+            <button id="send" type="submit">Send message</button>
+            <p id="status" class="hint" role="status"></p>
+        </form>
+    </section>
+
+  <section>
+    <h2>Image Generation</h2>
+    <p>Describe an image you want to create.</p>
+
+    <form id="image-form">
+        <label for="image-prompt">Image prompt</label>
+        <textarea
+            id="image-prompt"
+            maxlength="1000"
+            placeholder="A futuristic city in Pune at sunset..."
+            required
+        ></textarea>
+
+        <button id="image-button" type="submit">
+            Generate Image
+        </button>
+
+        <p id="image-status" class="hint" role="status"></p>
+        <div id="image-result"></div>
+    </form>
+</section>
+
+
+<section id="voice-agent" class="feature-card">
+  <h2>🎙️ AI Voice Agent</h2>
+  <p>Talk to your AI assistant using your microphone.</p>
+
+  <div id="voice-status" role="status">
+    Voice agent is ready.
+  </div>
+
+  <div class="voice-controls">
+    <button id="start-voice" type="button">
+      Start Conversation
+    </button>
+    <button id="stop-voice" type="button" disabled>
+      End Conversation
+    </button>
+  </div>
+
+  <p id="voice-error" role="alert"></p>
+  <div id="voice-audio"></div>
+</section>
+
+
+<script>
+const imageForm = document.getElementById("image-form");
+const imagePrompt = document.getElementById("image-prompt");
+const imageButton = document.getElementById("image-button");
+const imageStatus = document.getElementById("image-status");
+const imageResult = document.getElementById("image-result");
+
+imageForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const prompt = imagePrompt.value.trim();
+    if (!prompt || imageButton.disabled) return;
+
+    imageButton.disabled = true;
+    imageStatus.textContent = "Generating image...";
+    imageResult.replaceChildren();
+
+    try {
+        const response = await fetch("/api/images", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({prompt})
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            imageStatus.textContent =
+                data.error || "Image generation failed.";
+            return;
+        }
+
+        const image = document.createElement("img");
+        image.alt = prompt;
+        image.style.maxWidth = "100%";
+        image.style.marginTop = "16px";
+        image.style.borderRadius = "10px";
+
+        if (data.url) {
+            image.src = data.url;
+        } else if (data.b64_json) {
+            image.src = "data:image/png;base64," + data.b64_json;
+        } else {
+            imageStatus.textContent = "No displayable image was returned.";
+            return;
+        }
+
+        image.onerror = () => {
+            imageStatus.textContent =
+                "Image was returned, but it could not be displayed.";
+        };
+
+        imageResult.appendChild(image);
+        imageStatus.textContent = "Image returned successfully.";
+    } catch {
+        imageStatus.textContent =
+            "Could not connect to the application server.";
+    } finally {
+        imageButton.disabled = false;
+    }
+});
+</script>
+
+
+    <section>
+        <h2>Explore the studio</h2>
+        <div class="features">
+            <div class="feature">AI Chat — available</div>
+            <div class="feature">Image Generation — available</div>
+            <div class="feature">Voice Agent — available</div>
+        </div>
+    </section>
+</main>
+
+<script>
+    const form = document.getElementById("chat-form");
+    const input = document.getElementById("message");
+    const messages = document.getElementById("messages");
+    const sendButton = document.getElementById("send");
+    const status = document.getElementById("status");
+
+    function addMessage(text, role) {
+        const element = document.createElement("div");
+        element.className = "message " + role;
+        element.textContent = text;
+        messages.appendChild(element);
+        messages.scrollTop = messages.scrollHeight;
+        return element;
+    }
+
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const message = input.value.trim();
+        if (!message || sendButton.disabled) return;
+
+        addMessage(message, "user");
+        input.value = "";
+        sendButton.disabled = true;
+        status.textContent = "Waiting for AI response...";
+
+        const waiting = addMessage("Thinking...", "assistant");
+
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message })
+            });
+
+            const data = await response.json();
+            waiting.remove();
+
+            if (!response.ok) {
+                addMessage(data.error || "Request failed.", "assistant error");
+                status.textContent = "Request unsuccessful.";
+            } else {
+                addMessage(data.reply, "assistant");
+                status.textContent = "Response received.";
+            }
+        } catch (error) {
+            waiting.remove();
+            addMessage(
+                "Could not reach the application server. Please try again.",
+                "assistant error"
+            );
+            status.textContent = "Connection error.";
+        } finally {
+            sendButton.disabled = false;
+            input.focus();
+        }
+    });
+</script>
+
+<script type="module">
+  import {
+    Room,
+    RoomEvent,
+    Track
+  } from "https://cdn.jsdelivr.net/npm/livekit-client@2/+esm";
+
+  const startButton = document.getElementById("start-voice");
+  const stopButton = document.getElementById("stop-voice");
+  const status = document.getElementById("voice-status");
+  const errorBox = document.getElementById("voice-error");
+  const audioContainer = document.getElementById("voice-audio");
+
+  let room = null;
+  let connecting = false;
+
+  startButton.addEventListener("click", async () => {
+    if (room || connecting) return;
+
+    connecting = true;
+    startButton.disabled = true;
+    errorBox.textContent = "";
+    status.textContent = "Creating voice session...";
+    audioContainer.replaceChildren();
+
+    try {
+      const response = await fetch("/api/voice/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+
+      const session = await response.json();
+
+      if (!response.ok) {
+        throw new Error(session.error || "Could not create voice session.");
+      }
+
+      if (!session.ws_url || !session.token) {
+        throw new Error("The server returned incomplete session details.");
+      }
+
+      const activeRoom = new Room();
+    activeRoom.on(RoomEvent.TranscriptionReceived,
+  (segments, participant) => {
+    for (const seg of segments) {
+      if (!seg.text || !seg.final) continue;
+
+      const who = participant?.isLocal ? "YOU" : "AGENT";
+      console.log(`[VOICE TRANSCRIPT] ${who}: ${seg.text}`);
+    }
+  }
+);
+
+activeRoom.on(RoomEvent.ParticipantConnected, (participant) => {
+  console.log("[VOICE] Participant connected:", participant.identity);
+});
+
+activeRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+  console.log(
+    "[VOICE] Remote track subscribed:",
+    track.kind,
+    participant.identity
+  );
+});
+
+      room = activeRoom;
+
+    activeRoom.on(RoomEvent.TrackSubscribed,
+  async (track, publication, participant) => {
+    console.log(
+      "[VOICE] Remote track subscribed:",
+      track.kind,
+      participant.identity
+    );
+
+    if (track.kind !== Track.Kind.Audio) return;
+
+    const audio = track.attach();
+    audio.autoplay = true;
+    audio.controls = true;
+    audioContainer.appendChild(audio);
+
+    try {
+      await audio.play();
+      console.log("[VOICE] Audio playback started.");
+    } catch (error) {
+      console.warn("[VOICE] Audio playback blocked:", error);
+      status.textContent =
+        "Audio received. Use the audio player to start playback.";
+    }
+  }
+);
+
+
+      activeRoom.on(RoomEvent.Disconnected, () => {
+        if (room === activeRoom) {
+          room = null;
+          startButton.disabled = false;
+          stopButton.disabled = true;
+          status.textContent = "Voice session ended.";
+          audioContainer.replaceChildren();
+        }
+      });
+
+      status.textContent = "Connecting to voice service...";
+
+      await activeRoom.connect(session.ws_url, session.token);
+
+      if (room !== activeRoom) return;
+
+      await activeRoom.localParticipant.setMicrophoneEnabled(true);
+
+      status.textContent = "Connected! Speak into your microphone.";
+      stopButton.disabled = false;
+    } catch (error) {
+      if (room) {
+        const failedRoom = room;
+        room = null;
+        try {
+          await failedRoom.disconnect();
+        } catch (_) {}
+      }
+
+      startButton.disabled = false;
+      stopButton.disabled = true;
+      status.textContent = "Voice connection failed.";
+      errorBox.textContent =
+        error.message || "Please check the microphone and try again.";
+      audioContainer.replaceChildren();
+    } finally {
+      connecting = false;
+    }
+  });
+
+  stopButton.addEventListener("click", async () => {
+    if (!room) return;
+
+    const activeRoom = room;
+    room = null;
+    stopButton.disabled = true;
+    status.textContent = "Ending conversation...";
+
+    try {
+      await activeRoom.disconnect();
+    } catch (error) {
+      console.error("Voice disconnect error:", error);
+    }
+
+    audioContainer.replaceChildren();
+    startButton.disabled = false;
+    status.textContent = "Voice session ended.";
+  });
+</script>
+</body>
+
+</body>
+</html>
