@@ -85,42 +85,76 @@ def send_chat_message(message, model):
     )
 
 
+
 def extract_chat_text(result):
-    """Extract readable text from common chat response formats."""
+    """Extract assistant text from common API response formats."""
     if not isinstance(result, dict):
         return None
 
-    choices = result.get("choices", [])
+    def read_text(value):
+        if isinstance(value, str):
+            return value.strip() or None
 
-    if not choices or not isinstance(choices[0], dict):
+        if isinstance(value, list):
+            parts = []
+            for item in value:
+                if isinstance(item, str) and item.strip():
+                    parts.append(item.strip())
+                elif isinstance(item, dict):
+                    # Common text block formats
+                    for key in ("text", "content", "value"):
+                        text_value = item.get(key)
+                        if isinstance(text_value, str) and text_value.strip():
+                            parts.append(text_value.strip())
+                            break
+            return "\n".join(parts) or None
+
+        if isinstance(value, dict):
+            for key in ("text", "content", "value"):
+                extracted = read_text(value.get(key))
+                if extracted:
+                    return extracted
+
         return None
 
-    message = choices[0].get("message", {})
-    if not isinstance(message, dict):
-        return None
+    # Some APIs return the answer directly.
+    for key in ("output_text", "generated_text", "text"):
+        extracted = read_text(result.get(key))
+        if extracted:
+            return extracted
 
-    content = message.get("content")
+    # OpenAI-compatible chat completion format.
+    choices = result.get("choices")
+    if isinstance(choices, list):
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
 
-    if isinstance(content, str) and content.strip():
-        return content.strip()
+            message = choice.get("message")
+            if isinstance(message, dict):
+                extracted = read_text(message.get("content"))
+                if extracted:
+                    return extracted
 
-    if isinstance(content, list):
-        parts = []
+                extracted = read_text(message.get("text"))
+                if extracted:
+                    return extracted
 
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-            elif isinstance(item, dict) and isinstance(item.get("text"), str):
-                parts.append(item["text"])
+            extracted = read_text(choice.get("text"))
+            if extracted:
+                return extracted
 
-        text = "\n".join(parts).strip()
-        if text:
-            return text
-
-    if isinstance(message.get("text"), str):
-        text = message["text"].strip()
-        if text:
-            return text
+    # Some providers return a list under "output".
+    output = result.get("output")
+    if isinstance(output, list):
+        for item in output:
+            if isinstance(item, dict):
+                extracted = read_text(item.get("content"))
+                if extracted:
+                    return extracted
+                extracted = read_text(item.get("text"))
+                if extracted:
+                    return extracted
 
     return None
 
