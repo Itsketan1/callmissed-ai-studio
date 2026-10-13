@@ -80,7 +80,7 @@ def send_chat_message(message, model):
             "messages": [
                 {"role": "user", "content": message.strip()}
             ],
-            "max_tokens": 1000,
+            "max_tokens": 1500,
         },
     )
 
